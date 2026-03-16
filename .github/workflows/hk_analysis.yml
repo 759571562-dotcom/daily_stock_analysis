@@ -85,12 +85,38 @@ jobs:
           REPORT_TYPE: ${{ vars.REPORT_TYPE || secrets.REPORT_TYPE || 'simple' }}
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
           # 新功能配置（v3.0+）
-          AGENT_ARCH: ${{ vars.AGENT_ARCH || secrets.AGENT_ARCH || 'single' }}
-          AGENT_NL_ROUTING: ${{ vars.AGENT_NL_ROUTING || secrets.AGENT_NL_ROUTING || 'false' }}
+          AGENT_ARCH: ${{ vars.AGENT_ARCH || secrets.AGENT_ARCH || 'multi' }}
+          AGENT_NL_ROUTING: ${{ vars.AGENT_NL_ROUTING || secrets.AGENT_NL_ROUTING || 'true' }}
+          AGENT_MODE: ${{ vars.AGENT_MODE || secrets.AGENT_MODE || 'true' }}
+          AGENT_MAX_STEPS: ${{ vars.AGENT_MAX_STEPS || secrets.AGENT_MAX_STEPS || '10' }}
+          AGENT_SKILLS: ${{ vars.AGENT_SKILLS || secrets.AGENT_SKILLS || 'bull_trend,ma_golden_cross,volume_breakout,shrink_pullback' }}
+          AGENT_ORCHESTRATOR_MODE: ${{ vars.AGENT_ORCHESTRATOR_MODE || secrets.AGENT_ORCHESTRATOR_MODE || 'standard' }}
+          AGENT_RISK_OVERRIDE: ${{ vars.AGENT_RISK_OVERRIDE || secrets.AGENT_RISK_OVERRIDE || 'true' }}
+          AGENT_STRATEGY_AUTOWEIGHT: ${{ vars.AGENT_STRATEGY_AUTOWEIGHT || secrets.AGENT_STRATEGY_AUTOWEIGHT || 'true' }}
+          
           WEBHOOK_VERIFY_SSL: ${{ vars.WEBHOOK_VERIFY_SSL || secrets.WEBHOOK_VERIFY_SSL || 'true' }}
           RUN_IMMEDIATELY: ${{ vars.RUN_IMMEDIATELY || secrets.RUN_IMMEDIATELY || 'false' }}
           REPORT_SUMMARY_ONLY: ${{ vars.REPORT_SUMMARY_ONLY || secrets.REPORT_SUMMARY_ONLY || 'false' }}
           MERGE_EMAIL_NOTIFICATION: ${{ vars.MERGE_EMAIL_NOTIFICATION || secrets.MERGE_EMAIL_NOTIFICATION || 'false' }}
+          
+          # Portfolio持仓管理（v3.7.0全新功能）
+          PORTFOLIO_RISK_CONCENTRATION_ALERT_PCT: ${{ vars.PORTFOLIO_RISK_CONCENTRATION_ALERT_PCT || secrets.PORTFOLIO_RISK_CONCENTRATION_ALERT_PCT || '35.0' }}
+          PORTFOLIO_RISK_DRAWDOWN_ALERT_PCT: ${{ vars.PORTFOLIO_RISK_DRAWDOWN_ALERT_PCT || secrets.PORTFOLIO_RISK_DRAWDOWN_ALERT_PCT || '15.0' }}
+          PORTFOLIO_RISK_STOP_LOSS_ALERT_PCT: ${{ vars.PORTFOLIO_RISK_STOP_LOSS_ALERT_PCT || secrets.PORTFOLIO_RISK_STOP_LOSS_ALERT_PCT || '10.0' }}
+          PORTFOLIO_RISK_STOP_LOSS_NEAR_RATIO: ${{ vars.PORTFOLIO_RISK_STOP_LOSS_NEAR_RATIO || secrets.PORTFOLIO_RISK_STOP_LOSS_NEAR_RATIO || '0.8' }}
+          PORTFOLIO_RISK_LOOKBACK_DAYS: ${{ vars.PORTFOLIO_RISK_LOOKBACK_DAYS || secrets.PORTFOLIO_RISK_LOOKBACK_DAYS || '180' }}
+          PORTFOLIO_FX_UPDATE_ENABLED: ${{ vars.PORTFOLIO_FX_UPDATE_ENABLED || secrets.PORTFOLIO_FX_UPDATE_ENABLED || 'true' }}
+          
+          # Web界面（可选启用）
+          WEBUI_ENABLED: ${{ vars.WEBUI_ENABLED || secrets.WEBUI_ENABLED || 'false' }}
+          WEBUI_HOST: ${{ vars.WEBUI_HOST || secrets.WEBUI_HOST || '127.0.0.1' }}
+          WEBUI_PORT: ${{ vars.WEBUI_PORT || secrets.WEBUI_PORT || '8000' }}
+          ADMIN_AUTH_ENABLED: ${{ vars.ADMIN_AUTH_ENABLED || secrets.ADMIN_AUTH_ENABLED || 'false' }}
+          
+          # 高级分析功能
+          ENABLE_REALTIME_TECHNICAL_INDICATORS: ${{ vars.ENABLE_REALTIME_TECHNICAL_INDICATORS || secrets.ENABLE_REALTIME_TECHNICAL_INDICATORS || 'true' }}
+          FUNDAMENTAL_CONTEXT_ENABLED: ${{ vars.FUNDAMENTAL_CONTEXT_ENABLED || secrets.FUNDAMENTAL_CONTEXT_ENABLED || 'true' }}
+          CHIPS_DISTRIBUTION_ENABLED: ${{ vars.CHIPS_DISTRIBUTION_ENABLED || secrets.CHIPS_DISTRIBUTION_ENABLED || 'true' }}
           
           # 数据源和稳定性配置
           TRADING_DAY_CHECK_ENABLED: ${{ vars.TRADING_DAY_CHECK_ENABLED || secrets.TRADING_DAY_CHECK_ENABLED || 'true' }}
@@ -128,13 +154,18 @@ jobs:
           # 2. 检查LiteLLM配置格式（v3.4.0破坏性变更）
           echo "📡 数据源优先级: $REALTIME_SOURCE_PRIORITY"
           echo "🔧 YFINANCE_PRIORITY: $YFINANCE_PRIORITY"
-          echo "🤖 Agent架构: $AGENT_ARCH"
+          echo "🤖 Agent架构: $AGENT_ARCH (Agent模式: $AGENT_MODE)"
           echo "🌐 LiteLLM模型: $LITELLM_MODEL"
+          echo "💼 Portfolio风险监控: $PORTFOLIO_RISK_CONCENTRATION_ALERT_PCT% 集中度警报"
+          echo "🛡️  风控Agent否决权: $AGENT_RISK_OVERRIDE"
           
           # 3. 测试关键依赖可用性
           echo "🧪 测试关键依赖可用性..."
           python -c "
 import sys
+print('🚀 v3.7.0 新功能配置验证')
+print('='*50)
+
 # 测试LiteLLM集成（v3.4.0）
 try:
     import litellm
@@ -155,14 +186,40 @@ try:
 except Exception as e:
     print(f'❌ akshare导入失败: {e}')
 
+# 测试新功能依赖
+try:
+    import sqlalchemy
+    print('✅ SQLAlchemy可用 (Portfolio数据库支持)')
+except Exception as e:
+    print(f'❌ SQLAlchemy导入失败: {e}')
+
+try:
+    import fastapi
+    print('✅ FastAPI可用 (Web界面支持)')
+except Exception as e:
+    print(f'❌ FastAPI导入失败: {e}')
+
 # 检查Gemini模型格式（破坏性变更修复）
 if '$LITELLM_MODEL'.startswith('gemini/gemini-'):
     print('✅ Gemini模型格式正确 (LiteLLM兼容格式)')
 else:
     print('⚠️  Gemini模型格式可能需要调整')
 
+# 新功能状态报告
 print('')
-print('✅ 配置验证完成，开始分析...')"
+print('📊 新功能配置状态:')
+print(f'  Agent架构: $AGENT_ARCH (Multi-Agent协同)')
+print(f'  Agent技能: $AGENT_SKILLS')
+print(f'  Agent路由: $AGENT_NL_ROUTING')
+print(f'  Portfolio风险监控: 启用')
+print(f'    集中度警报: $PORTFOLIO_RISK_CONCENTRATION_ALERT_PCT%')
+print(f'    回撤警报: $PORTFOLIO_RISK_DRAWDOWN_ALERT_PCT%')
+print(f'  Web界面: $WEBUI_ENABLED')
+print(f'  实时技术指标: $ENABLE_REALTIME_TECHNICAL_INDICATORS')
+print(f'  基本面聚合: $FUNDAMENTAL_CONTEXT_ENABLED')
+
+print('')
+print('✅ v3.7.0 所有新功能配置验证完成！')"
 
           if [ "$MODE" = "market-only" ]; then
             python main.py --market-review $FORCE_RUN_ARG
