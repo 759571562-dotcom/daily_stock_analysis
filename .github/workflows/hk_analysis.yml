@@ -53,19 +53,29 @@ jobs:
 
       - name: 执行港股分析
         env:
+          # LiteLLM统一配置（v3.4.0破坏性变更）
+          LITELLM_MODEL: ${{ vars.LITELLM_MODEL || secrets.LITELLM_MODEL || 'gemini/gemini-3-flash-preview' }}
+          LITELLM_CONFIG: ${{ secrets.LITELLM_CONFIG || '' }}
+          LLM_CHANNELS: ${{ secrets.LLM_CHANNELS || '' }}
+          
+          # 向后兼容的单Key配置
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-3-flash-preview' }}
-          GEMINI_MODEL_FALLBACK: ${{ vars.GEMINI_MODEL_FALLBACK || secrets.GEMINI_MODEL_FALLBACK || 'gemini-2.5-flash' }}
+          GEMINI_MODEL: 'gemini/gemini-3-flash-preview'  # 固定使用LiteLLM格式
+          GEMINI_MODEL_FALLBACK: 'gemini/gemini-2.5-flash'  # 固定使用LiteLLM格式
           GEMINI_REQUEST_DELAY: '3.0'
-          AIHUBMIX_KEY: ${{ secrets.AIHUBMIX_KEY }}
+          
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || secrets.OPENAI_BASE_URL }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || secrets.OPENAI_MODEL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || secrets.OPENAI_MODEL || 'gpt-4o-mini' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # TUSHARE_TOKEN已移除，避免港股数据获取失败
           BOCHA_API_KEYS: ${{ secrets.BOCHA_API_KEYS }}
           TAVILY_API_KEYS: ${{ secrets.TAVILY_API_KEYS }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          
+          # Discord配置变更（v3.x 向后兼容）
+          DISCORD_MAIN_CHANNEL_ID: ${{ vars.DISCORD_MAIN_CHANNEL_ID || secrets.DISCORD_MAIN_CHANNEL_ID || secrets.DISCORD_CHANNEL_ID || '' }}
+          DISCORD_MAX_WORDS: ${{ vars.DISCORD_MAX_WORDS || secrets.DISCORD_MAX_WORDS || '1500' }}
           STOCK_LIST: ${{ secrets.STOCK_LIST_HK }}
           # 港股特定配置
           MARKET_REVIEW_ENABLED: 'false'
@@ -74,11 +84,23 @@ jobs:
           # 数据源优化
           REPORT_TYPE: ${{ vars.REPORT_TYPE || secrets.REPORT_TYPE || 'simple' }}
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
+          # 新功能配置（v3.0+）
+          AGENT_ARCH: ${{ vars.AGENT_ARCH || secrets.AGENT_ARCH || 'single' }}
+          AGENT_NL_ROUTING: ${{ vars.AGENT_NL_ROUTING || secrets.AGENT_NL_ROUTING || 'false' }}
+          WEBHOOK_VERIFY_SSL: ${{ vars.WEBHOOK_VERIFY_SSL || secrets.WEBHOOK_VERIFY_SSL || 'true' }}
+          RUN_IMMEDIATELY: ${{ vars.RUN_IMMEDIATELY || secrets.RUN_IMMEDIATELY || 'false' }}
+          REPORT_SUMMARY_ONLY: ${{ vars.REPORT_SUMMARY_ONLY || secrets.REPORT_SUMMARY_ONLY || 'false' }}
+          MERGE_EMAIL_NOTIFICATION: ${{ vars.MERGE_EMAIL_NOTIFICATION || secrets.MERGE_EMAIL_NOTIFICATION || 'false' }}
+          
+          # 数据源和稳定性配置
           TRADING_DAY_CHECK_ENABLED: ${{ vars.TRADING_DAY_CHECK_ENABLED || secrets.TRADING_DAY_CHECK_ENABLED || 'true' }}
           LOG_LEVEL: DEBUG  # 改为DEBUG以查看更多详细信息
           MAX_WORKERS: '1'
           REALTIME_SOURCE_PRIORITY: 'yfinance,akshare'  # 优先yfinance，备选akshare
           YFINANCE_PRIORITY: '0'  # 确保yfinance优先
+          
+          # 超时配置（efinance修复 v3.6.0）
+          EFINANCE_TIMEOUT: '30'  # 添加efinance API超时设置
 
         run: |
           FORCE_RUN_ARG=""
@@ -89,23 +111,39 @@ jobs:
           MODE="${{ github.event.inputs.mode || 'stocks-only' }}"
 
           echo "=========================================="
-          echo "🚀 港股自选股智能分析系统"
+          echo "🚀 港股自选股智能分析系统（v3.7.0兼容）"
           echo "=========================================="
           echo "⏰ 时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
           echo "🎯 运行模式: $MODE"
           echo "📊 自选股: $STOCK_LIST"
           echo ""
-
-          # 清空TUSHARE_TOKEN，避免港股数据获取失败
+          
+          # 配置验证和兼容性处理
+          echo "🔧 配置验证和兼容性处理..."
+          
+          # 1. 清空TUSHARE_TOKEN，避免港股数据获取失败
           unset TUSHARE_TOKEN
-          echo "ℹ️  TUSHARE_TOKEN已清空，优先使用yfinance获取港股数据"
+          echo "✅ TUSHARE_TOKEN已清空，优先使用yfinance获取港股数据"
+          
+          # 2. 检查LiteLLM配置格式（v3.4.0破坏性变更）
           echo "📡 数据源优先级: $REALTIME_SOURCE_PRIORITY"
           echo "🔧 YFINANCE_PRIORITY: $YFINANCE_PRIORITY"
+          echo "🤖 Agent架构: $AGENT_ARCH"
+          echo "🌐 LiteLLM模型: $LITELLM_MODEL"
           
-          # 测试数据源是否可用
-          echo "🧪 测试数据源配置..."
+          # 3. 测试关键依赖可用性
+          echo "🧪 测试关键依赖可用性..."
           python -c "
 import sys
+# 测试LiteLLM集成（v3.4.0）
+try:
+    import litellm
+    print('✅ LiteLLM可用 (v3.4.0集成)')
+except Exception as e:
+    print(f'❌ LiteLLM导入失败: {e}')
+    sys.exit(1)
+    
+# 测试数据源
 try:
     import yfinance as yf
     print('✅ yfinance可用')
@@ -116,7 +154,15 @@ try:
     print('✅ akshare可用')
 except Exception as e:
     print(f'❌ akshare导入失败: {e}')
-"
+
+# 检查Gemini模型格式（破坏性变更修复）
+if '$LITELLM_MODEL'.startswith('gemini/gemini-'):
+    print('✅ Gemini模型格式正确 (LiteLLM兼容格式)')
+else:
+    print('⚠️  Gemini模型格式可能需要调整')
+
+print('')
+print('✅ 配置验证完成，开始分析...')"
 
           if [ "$MODE" = "market-only" ]; then
             python main.py --market-review $FORCE_RUN_ARG
