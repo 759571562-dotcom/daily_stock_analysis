@@ -92,6 +92,10 @@ jobs:
           echo "📊 自选股: $STOCK_LIST"
           echo ""
 
+          # 清空TUSHARE_TOKEN，避免港股数据获取失败
+          unset TUSHARE_TOKEN
+          echo "ℹ️  TUSHARE_TOKEN已清空，强制使用AkShare获取港股数据"
+
           if [ "$MODE" = "market-only" ]; then
             python main.py --market-review $FORCE_RUN_ARG
           elif [ "$MODE" = "stocks-only" ]; then
