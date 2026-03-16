@@ -1,3 +1,4 @@
+
 name: 每日港股分析
 
 on:
@@ -8,15 +9,6 @@ on:
   # 手动触发
   workflow_dispatch:
     inputs:
-      mode:
-        description: '运行模式'
-        required: true
-        default: 'full'
-        type: choice
-        options:
-          - full          # 完整分析（股票+大盘）
-          - market-only   # 仅大盘复盘
-          - stocks-only   # 仅股票分析
       force_run:
         description: '强制运行（跳过交易日检查）'
         required: false
@@ -154,11 +146,13 @@ jobs:
           # ==========================================
           # 港股自选股配置
           # ==========================================
-          # 港股代码格式：hk00700（腾讯）、hk09988（阿里巴巴）等
-          # 通过 vars.STOCK_LIST_HK 或 secrets.STOCK_LIST_HK 配置
-          # 默认值包含热门港股：腾讯、阿里巴巴、美团、小米、比亚迪股份、中国平安、建设银行、香港交易所、网易、京东
-          STOCK_LIST: ${{ vars.STOCK_LIST_HK || secrets.STOCK_LIST_HK || 'hk00700,hk09988,hk03690,hk01810,hk01211,hk02318,hk00939,hk00388,hk09999,hk09618' }}
-          MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION_HK || secrets.MARKET_REVIEW_REGION_HK || 'hk' }}
+          # ⚠️ 重要：港股代码必须带 HK 前缀！格式：HK00700（腾讯）、HK09988（阿里巴巴）
+          # 如果在 Secrets/Variables 中配置 STOCK_LIST_HK，也必须使用 HK 前缀格式
+          # 例如：HK00700,HK09988,HK03690,HK01810
+          # 默认值：腾讯、阿里巴巴、美团、小米、比亚迪股份、中国平安、建设银行、香港交易所、网易、京东
+          STOCK_LIST: ${{ vars.STOCK_LIST_HK || secrets.STOCK_LIST_HK || 'HK00700,HK09988,HK03690,HK01810,HK01211,HK02318,HK00939,HK00388,HK09999,HK09618' }}
+          # 大盘复盘区域：港股暂不支持独立复盘（合法值仅 cn/us/both），设为 cn
+          MARKET_REVIEW_REGION: 'cn'
           
           # ==========================================
           # 港股市场特定配置
@@ -170,7 +164,8 @@ jobs:
           # ==========================================
           REPORT_TYPE: ${{ vars.REPORT_TYPE || secrets.REPORT_TYPE || 'simple' }}
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
-          MARKET_REVIEW_ENABLED: ${{ vars.MARKET_REVIEW_ENABLED_HK || secrets.MARKET_REVIEW_ENABLED_HK || 'true' }}
+          # 港股无独立大盘复盘功能，默认关闭
+          MARKET_REVIEW_ENABLED: 'false'
           ANALYSIS_DELAY: ${{ vars.ANALYSIS_DELAY || secrets.ANALYSIS_DELAY || '0' }}
           TRADING_DAY_CHECK_ENABLED: ${{ vars.TRADING_DAY_CHECK_ENABLED || secrets.TRADING_DAY_CHECK_ENABLED || 'true' }}
           
@@ -201,14 +196,33 @@ jobs:
           unset TUSHARE_TOKEN
           echo "✅ TUSHARE_TOKEN 已清空，优先使用 yfinance 获取港股数据"
 
-          # 判断运行模式
-          MODE="${{ github.event.inputs.mode || 'full' }}"
-          
+          # ==========================================
+          # 自动修正港股代码前缀
+          # ==========================================
+          # 如果用户在 Secrets/Variables 中填写的代码没有 HK 前缀，自动补全
+          # 例如：01810,09988 → HK01810,HK09988
+          FIXED_LIST=""
+          IFS=',' read -ra CODES <<< "$STOCK_LIST"
+          for code in "${CODES[@]}"; do
+            code=$(echo "$code" | xargs | tr '[:lower:]' '[:upper:]')  # 去空格、转大写
+            if [[ -n "$code" ]]; then
+              if [[ ! "$code" =~ ^HK ]]; then
+                code="HK${code}"
+              fi
+              if [[ -n "$FIXED_LIST" ]]; then
+                FIXED_LIST="${FIXED_LIST},${code}"
+              else
+                FIXED_LIST="${code}"
+              fi
+            fi
+          done
+          export STOCK_LIST="$FIXED_LIST"
+          echo "✅ 港股代码已标准化（自动补全 HK 前缀）"
+
           echo "=========================================="
           echo "🇭🇰 港股自选股智能分析系统"
           echo "=========================================="
           echo "⏰ 时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
-          echo "🎯 运行模式: $MODE"
           echo "📊 港股自选股: $STOCK_LIST"
           echo "📝 报告类型: $REPORT_TYPE"
           echo ""
@@ -251,14 +265,8 @@ jobs:
             echo "⚡ 已启用强制运行模式（跳过交易日检查）"
           fi
 
-          # 执行分析
-          if [ "$MODE" = "market-only" ]; then
-            python main.py --market-review $FORCE_RUN_ARG
-          elif [ "$MODE" = "stocks-only" ]; then
-            python main.py --no-market-review $FORCE_RUN_ARG
-          else
-            python main.py $FORCE_RUN_ARG
-          fi
+          # 执行分析（港股无独立大盘复盘，统一使用 --no-market-review）
+          python main.py --no-market-review $FORCE_RUN_ARG
       
       - name: 上传分析报告
         uses: actions/upload-artifact@v6
