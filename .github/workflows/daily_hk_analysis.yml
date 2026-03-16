@@ -175,8 +175,11 @@ jobs:
           LOG_LEVEL: INFO
           MAX_WORKERS: ${{ vars.MAX_WORKERS || secrets.MAX_WORKERS || '1' }}
           ENABLE_CHIP_DISTRIBUTION: 'false'
-          # 港股数据源优先级：yfinance 为主，akshare 为备选
-          REALTIME_SOURCE_PRIORITY: 'yfinance,akshare'
+          # 港股实时行情数据源优先级
+          # ⚠️ 合法值：efinance, akshare_em, akshare_sina, tencent, tushare
+          # 港股实时行情只有 akshare_em 支持（通过 ak.stock_hk_spot_em()）
+          REALTIME_SOURCE_PRIORITY: 'akshare_em'
+          # yfinance 作为历史数据兜底源，提高其优先级
           YFINANCE_PRIORITY: '0'
           # 超时配置
           EFINANCE_TIMEOUT: '30'
