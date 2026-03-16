@@ -68,13 +68,13 @@ jobs:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           STOCK_LIST: ${{ secrets.STOCK_LIST_HK }}
           MARKET_REVIEW_ENABLED: 'false'
-          MARKET_REVIEW_REGION: 'hk'
+          MARKET_REVIEW_REGION: 'cn'
           REPORT_TYPE: ${{ vars.REPORT_TYPE || secrets.REPORT_TYPE || 'simple' }}
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
           TRADING_DAY_CHECK_ENABLED: ${{ vars.TRADING_DAY_CHECK_ENABLED || secrets.TRADING_DAY_CHECK_ENABLED || 'true' }}
           LOG_LEVEL: INFO
           MAX_WORKERS: '1'
-          REALTIME_SOURCE_PRIORITY: 'yfinance'
+          REALTIME_SOURCE_PRIORITY: 'akshare'
 
         run: |
           FORCE_RUN_ARG=""
