@@ -74,7 +74,7 @@ jobs:
           TRADING_DAY_CHECK_ENABLED: ${{ vars.TRADING_DAY_CHECK_ENABLED || secrets.TRADING_DAY_CHECK_ENABLED || 'true' }}
           LOG_LEVEL: INFO
           MAX_WORKERS: '1'
-          REALTIME_SOURCE_PRIORITY: 'akshare_hk'
+          REALTIME_SOURCE_PRIORITY: 'yfinance'
 
         run: |
           FORCE_RUN_ARG=""
