@@ -1,0 +1,185 @@
+name: "每日港股分析（简化版）"
+
+on:
+  schedule:
+    - cron: '10 10 * * 1-5'  # 周一到周五港股收盘后分析
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '运行模式'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - market-only
+          - stocks-only
+      force_run:
+        description: '强制运行（跳过交易日检查）'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    
+    steps:
+    - name: 随机延迟（避免同时访问）
+      run: sleep $((RANDOM % 300))
+    
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Python环境
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: 安装依赖
+      run: |
+        pip install --upgrade pip
+        pip install yfinance akshare pandas numpy matplotlib plotly scipy
+        pip install requests beautifulsoup4 lxml
+    
+    - name: 获取股票列表
+      run: |
+        echo "港股股票列表："
+        echo "${{ secrets.STOCK_LIST_HK }}"
+        echo "当前模式：${{ github.event.inputs.mode }}"
+    
+    - name: 检查是否为交易日
+      if: inputs.force_run != 'true'
+      run: |
+        python -c "
+        import datetime
+        import requests
+        
+        # 获取香港节假日（简单判断周末）
+        today = datetime.datetime.now().weekday()  # 0=周一, 6=周日
+        if today >= 5:  # 周六或周日
+            print('今天是周末，非交易日')
+            exit(1)
+        else:
+            print('今天是交易日')
+        "
+    
+    - name: 运行港股分析
+      env:
+        STOCK_LIST_HK: ${{ secrets.STOCK_LIST_HK }}
+        MODE: ${{ github.event.inputs.mode }}
+      run: |
+        # 检查股票列表
+        echo "股票列表: $STOCK_LIST_HK"
+        
+        # 创建简化的港股分析脚本
+        cat > analyze_hk.py << 'EOF'
+import os
+import sys
+import yfinance as yf
+import pandas as pd
+from datetime import datetime, timedelta
+        
+def analyze_hk_stock(stock_code):
+    '''分析单只港股'''
+    try:
+        # 港股代码格式：hk01810 -> 01810.HK
+        code = f"{stock_code.lstrip('hk')}.HK" if stock_code.startswith('hk') else f"{stock_code}.HK"
+        
+        print(f"正在分析港股：{code}")
+        
+        # 获取数据
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+        
+        ticker = yf.Ticker(code)
+        df = ticker.history(start=start_date.strftime('%Y-%m-%d'), 
+                           end=end_date.strftime('%Y-%m-%d'),
+                           interval='1d')
+        
+        if df.empty:
+            print(f"  警告：{code} 无数据")
+            return None
+        
+        # 基本分析
+        latest_close = df['Close'].iloc[-1]
+        prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
+        change_pct = ((latest_close - prev_close) / prev_close * 100)
+        
+        # 成交量分析
+        avg_volume = df['Volume'].mean()
+        latest_volume = df['Volume'].iloc[-1]
+        volume_ratio = latest_volume / avg_volume if avg_volume > 0 else 0
+        
+        return {
+            '代码': code,
+            '最新价格': round(latest_close, 2),
+            '涨跌幅': round(change_pct, 2),
+            '成交额': f"{latest_volume:,.0f}",
+            '量比': round(volume_ratio, 2),
+            '数据天数': len(df)
+        }
+        
+    except Exception as e:
+        print(f"  分析失败：{e}")
+        return None
+        
+def main():
+    # 获取股票列表
+    stock_list = os.getenv('STOCK_LIST_HK', '')
+    if not stock_list:
+        print("错误：STOCK_LIST_HK 未设置")
+        sys.exit(1)
+    
+    stocks = [s.strip() for s in stock_list.split(',')]
+    print(f"共 {len(stocks)} 只港股需要分析")
+    
+    results = []
+    for stock in stocks:
+        result = analyze_hk_stock(stock)
+        if result:
+            results.append(result)
+    
+    # 输出结果
+    print("\n===== 港股分析结果 =====")
+    if results:
+        df = pd.DataFrame(results)
+        print(df.to_string(index=False))
+        
+        # 保存结果
+        df.to_csv('hk_analysis_result.csv', index=False)
+        print(f"\n结果已保存到 hk_analysis_result.csv")
+    else:
+        print("无有效分析结果")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+EOF
+        
+        # 运行分析
+        python analyze_hk.py
+    
+    - name: 上传结果
+      uses: actions/upload-artifact@v4
+      with:
+        name: hk-analysis-result
+        path: |
+          hk_analysis_result.csv
+        retention-days: 30
+    
+    - name: 生成报告
+      run: |
+        echo "港股分析完成于 $(date)" > report.txt
+        echo "分析股票：${{ secrets.STOCK_LIST_HK }}" >> report.txt
+        echo "运行模式：${{ github.event.inputs.mode }}" >> report.txt
+        
+        if [ -f hk_analysis_result.csv ]; then
+          echo "结果文件：hk_analysis_result.csv" >> report.txt
+          head -5 hk_analysis_result.csv >> report.txt
+        else:
+          echo "警告：未找到结果文件" >> report.txt
+        
+        cat report.txt
